@@ -1,0 +1,8 @@
+{
+  "name": "LiteStream-V.1.0.3",
+  "description": "MUSIK NORMAL TANPA VIDIO . CPU 8 %\n\"Single Instance FFmpeg\" menjadi \"Multi-Instance FFmpeg\".",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

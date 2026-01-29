@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LiteStream - Audio Broadcast Server</title>
+    
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'%3E%3Cpath d='M13 10V3L4 14h7v7l9-11h-7z'/%3E%3C/svg%3E">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js" onerror="console.warn('Socket.io failed to load. Real-time features disabled.')"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        
+        :root { --accent: #6366f1; --bg: #0f172a; }
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: var(--bg); 
+            color: #f8fafc;
+            margin: 0; padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Desktop Sidebar Active State */
+        .nav-link.active { color: white; background: rgba(99, 102, 241, 0.2); border-radius: 12px; }
+        .nav-link.active i { color: #818cf8; }
+
+        /* Mobile Bottom Nav Active State */
+        .mobile-nav-link.active { color: #818cf8; }
+        .mobile-nav-link.active i { transform: translateY(-2px); text-shadow: 0 4px 12px rgba(99,102,241,0.5); }
+
+        .tab-content { display: none; opacity: 0; transform: translateY(10px); transition: all 0.3s ease; }
+        .tab-content.active { display: block; opacity: 1; transform: translateY(0); }
+
+        .media-subtab.active { background: #6366f1; color: white; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3); }
+
+        .glass { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
+        .hero-bg { background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%); }
+        
+        .view-section { display: none !important; }
+        .view-section.active-view { display: block !important; }
+        #main-app.active-view { display: flex !important; }
+        
+        .toggle-checkbox:checked { right: 0; border-color: #68D391; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
+        
+        #logConsole::-webkit-scrollbar { width: 6px; }
+        #logConsole::-webkit-scrollbar-track { background: #0f172a; }
+        #logConsole::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+        /* Hide Scrollbar for clean UI */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="min-h-screen pb-20 md:pb-0 selection:bg-indigo-500/30">
+
+    <!-- LANDING PAGE -->
+    <div id="landing-view" class="view-section active-view relative overflow-hidden min-h-screen">
+        <div class="absolute inset-0 hero-bg -z-10"></div>
+        <nav class="fixed top-0 left-0 right-0 z-50 px-6 py-6 lg:px-20 flex justify-between items-center glass border-b border-slate-800/50">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg"><i class="fas fa-music text-white"></i></div>
+                <span class="text-xl font-bold tracking-tight">LiteStream</span>
+            </div>
+            <button onclick="showAuth('login')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-xl transition-all">Dashboard</button>
+        </nav>
+
+        <section class="pt-32 pb-16 px-6 lg:px-20 text-center max-w-5xl mx-auto flex flex-col justify-center min-h-[80vh]">
+            <h1 class="text-5xl lg:text-7xl font-extrabold leading-tight mb-8">Start Your <br> <span class="text-indigo-400">Radio Station.</span></h1>
+            <p class="text-lg text-slate-400 mb-12 max-w-2xl mx-auto">Server streaming audio paling ringan. Upload MP3, pasang cover, dan broadcast 24/7 ke YouTube, Facebook, dan lainnya secara bersamaan.</p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button onclick="showAuth('register')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-5 rounded-3xl font-bold shadow-2xl transition-all">Daftar Sekarang</button>
+                <button onclick="showAuth('login')" class="bg-slate-800 hover:bg-slate-700 text-white px-10 py-5 rounded-3xl font-bold border border-slate-700">Login Member</button>
+            </div>
+        </section>
+
+        <section id="pricing" class="py-24 px-6 lg:px-20 bg-slate-950/50">
+            <div class="text-center mb-16"><h2 class="text-3xl md:text-4xl font-bold mb-4">Pilih Paket Radio</h2></div>
+            <div id="pricing-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto"></div>
+        </section>
+    </div>
+
+    <!-- LOGIN MODAL -->
+    <div id="login-view" class="hidden fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-[2rem] p-6 md:p-8 space-y-6 shadow-2xl relative">
+            <button onclick="hideAuth()" class="absolute top-5 right-5 text-slate-500 hover:text-white p-2"><i class="fas fa-times text-xl"></i></button>
+            <div class="text-center">
+                <div class="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><i class="fas fa-music text-2xl text-white"></i></div>
+                <h2 class="text-2xl font-bold" id="auth-title">LiteStream</h2>
+            </div>
+            <form onsubmit="handleAuth(event)" class="space-y-4">
+                <input type="text" id="login-user" required class="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 ring-indigo-500/50" placeholder="Username">
+                <input type="password" id="login-pass" required class="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 ring-indigo-500/50" placeholder="Password">
+                <button type="submit" id="auth-btn" class="w-full py-4 bg-indigo-600 rounded-2xl font-bold text-white shadow-xl hover:bg-indigo-500 uppercase tracking-wide">Masuk Dashboard</button>
+                <p class="text-center text-xs text-slate-500 mt-4">
+                    <span id="toggle-text">Belum punya akun?</span> 
+                    <button type="button" onclick="toggleAuthMode()" id="toggle-btn" class="text-indigo-400 font-bold hover:underline">Daftar Sekarang</button>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- START STREAM SELECTION MODAL -->
+    <div id="start-stream-modal" class="hidden fixed inset-0 z-[110] bg-slate-950/90 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4">
+        <div class="bg-slate-900 border-t md:border border-slate-800 w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] p-6 md:p-8 shadow-2xl relative animate-slide-up">
+            <div class="w-12 h-1.5 bg-slate-800 rounded-full mx-auto mb-6 md:hidden"></div>
+            <button onclick="closeStartModal()" class="absolute top-6 right-6 text-slate-500 hover:text-white hidden md:block"><i class="fas fa-times"></i></button>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-white mb-1">Pilih Tujuan Broadcast</h3>
+                <p class="text-xs text-slate-400">Pilih channel mana yang akan memutar playlist ini.</p>
+            </div>
+            
+            <div id="start-dest-list" class="space-y-3 mb-6 max-h-60 overflow-y-auto pr-1">
+                <!-- Checkboxes populated dynamically -->
+            </div>
+
+            <div class="flex gap-3">
+                 <button onclick="closeStartModal()" class="flex-1 py-3 bg-slate-800 text-slate-300 rounded-xl font-bold text-sm md:hidden">Batal</button>
+                 <button onclick="confirmStartStream()" class="flex-[2] py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow-lg transition-colors flex items-center justify-center gap-2">
+                    <i class="fas fa-play"></i> MULAI STREAM
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD DESTINATION MODAL -->
+    <div id="add-dest-modal" class="hidden fixed inset-0 z-[110] bg-slate-950/90 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4">
+        <div class="bg-slate-900 border-t md:border border-slate-800 w-full md:max-w-md rounded-t-[2rem] md:rounded-[2rem] p-6 md:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div class="w-12 h-1.5 bg-slate-800 rounded-full mx-auto mb-6 md:hidden"></div>
+            <button onclick="document.getElementById('add-dest-modal').classList.add('hidden')" class="absolute top-6 right-6 text-slate-500 hover:text-white hidden md:block"><i class="fas fa-times"></i></button>
+            
+            <h3 class="text-xl font-bold text-white mb-6">Tambah Tujuan Stream</h3>
+            <form onsubmit="handleAddDestination(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Platform</label>
+                    <select id="new-dest-platform" onchange="handleNewDestPlatformChange()" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-indigo-500">
+                        <option value="youtube">YouTube Live</option>
+                        <option value="facebook">Facebook Live</option>
+                        <option value="twitch">Twitch</option>
+                        <option value="custom">Custom RTMP</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Nama Label</label>
+                    <input type="text" id="new-dest-name" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-indigo-500" placeholder="Contoh: Channel 1">
+                </div>
+                <div id="new-dest-url-container" class="hidden">
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Server RTMP URL</label>
+                    <input type="text" id="new-dest-url" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-indigo-500" placeholder="rtmp://...">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Stream Key</label>
+                    <input type="password" id="new-dest-key" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-indigo-500">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="document.getElementById('add-dest-modal').classList.add('hidden')" class="flex-1 py-3 bg-slate-800 text-slate-300 rounded-xl font-bold md:hidden">Batal</button>
+                    <button type="submit" class="flex-[2] bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-bold shadow-lg">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MEDIA DETAILS MODAL -->
+    <div id="media-details-modal" class="hidden fixed inset-0 z-[120] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative animate-slide-up">
+            <button onclick="closeMediaDetails()" class="absolute top-6 right-6 text-slate-500 hover:text-white"><i class="fas fa-times"></i></button>
+            
+            <div class="text-center mb-6">
+                <div id="detail-icon-container" class="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-700 shadow-inner">
+                    <i id="detail-icon" class="fas fa-music text-3xl text-indigo-500"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white mb-1 px-4 truncate" id="detail-filename">Filename.mp3</h3>
+                <p class="text-xs font-bold text-emerald-400 uppercase tracking-widest" id="detail-type">AUDIO</p>
+            </div>
+            
+            <div class="space-y-3 bg-slate-950/50 p-5 rounded-2xl border border-slate-800/50">
+                <div class="flex justify-between text-sm items-center border-b border-slate-800/50 pb-2">
+                    <span class="text-slate-500 font-medium">File Size</span>
+                    <span class="font-bold text-slate-300 font-mono" id="detail-size">0 MB</span>
+                </div>
+                <div class="flex justify-between text-sm items-center border-b border-slate-800/50 pb-2">
+                    <span class="text-slate-500 font-medium">Uploaded At</span>
+                    <span class="font-bold text-slate-300 text-xs" id="detail-date">-</span>
+                </div>
+                <div class="flex justify-between text-sm items-center">
+                    <span class="text-slate-500 font-medium">System ID</span>
+                    <span class="font-mono text-xs text-slate-600 bg-slate-900 px-2 py-0.5 rounded" id="detail-id">#0</span>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <button onclick="closeMediaDetails()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm transition-colors">Tutup</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- CONFIRM MODAL -->
+    <div id="custom-confirm-modal" class="hidden fixed inset-0 z-[120] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative">
+            <div class="text-center mb-6">
+                <h3 class="text-lg font-bold text-white mb-2">Konfirmasi</h3>
+                <p id="confirm-message" class="text-sm text-slate-400">Yakin?</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeConfirmModal()" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm">Batal</button>
+                <button id="btn-confirm-action" class="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-rose-900/20">Ya</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast-container" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-[130] flex flex-col gap-2 w-[90%] max-w-xs pointer-events-none"></div>
+
+    <!-- APP LAYOUT -->
+    <div id="main-app" class="view-section flex flex-col md:flex-row min-h-screen">
+        
+        <!-- DESKTOP SIDEBAR -->
+        <aside class="hidden md:flex w-72 bg-slate-900 border-r border-slate-800 flex-col p-8 sticky top-0 h-screen">
+            <div class="flex items-center gap-3 mb-12">
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center"><i class="fas fa-music text-white"></i></div>
+                <h1 class="font-bold text-xl tracking-tight">LiteStream</h1>
+            </div>
+            <nav class="space-y-2 flex-1">
+                <button onclick="switchTab('overview')" id="nav-overview" class="nav-link w-full flex items-center gap-4 px-5 py-4 text-slate-400 transition-all font-medium active"><i class="fas fa-home w-5"></i> Overview</button>
+                <button onclick="switchTab('library')" id="nav-library" class="nav-link w-full flex items-center gap-4 px-5 py-4 text-slate-400 transition-all font-medium"><i class="fas fa-folder w-5"></i> Library</button>
+                <button onclick="switchTab('users')" id="nav-users" class="nav-link hidden w-full flex items-center gap-4 px-5 py-4 text-slate-400 transition-all font-medium"><i class="fas fa-users-cog w-5"></i> Admin</button>
+                <button onclick="switchTab('settings')" id="nav-settings" class="nav-link w-full flex items-center gap-4 px-5 py-4 text-slate-400 transition-all font-medium"><i class="fas fa-sliders w-5"></i> Multi-Stream</button>
+                <button onclick="switchTab('profile')" id="nav-profile" class="nav-link w-full flex items-center gap-4 px-5 py-4 text-slate-400 transition-all font-medium"><i class="fas fa-user-circle w-5"></i> Profile</button>
+            </nav>
+            <div class="pt-6 border-t border-slate-800 mt-6">
+                <button onclick="handleLogout()" class="w-full flex items-center gap-4 px-5 py-4 text-rose-400 font-bold hover:bg-rose-500/10 rounded-2xl transition-all"><i class="fas fa-sign-out-alt w-5"></i> Logout</button>
+            </div>
+        </aside>
+
+        <!-- MOBILE BOTTOM NAV -->
+        <div class="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 flex justify-around items-center px-2 z-50 pb-safe">
+            <button onclick="switchTab('overview')" id="mob-nav-overview" class="mobile-nav-link active flex flex-col items-center gap-1 p-2 text-slate-500 transition-all">
+                <i class="fas fa-home text-xl mb-0.5"></i> <span class="text-[10px] font-bold">Home</span>
+            </button>
+            <button onclick="switchTab('library')" id="mob-nav-library" class="mobile-nav-link flex flex-col items-center gap-1 p-2 text-slate-500 transition-all">
+                <i class="fas fa-folder text-xl mb-0.5"></i> <span class="text-[10px] font-bold">Media</span>
+            </button>
+            <div class="relative -top-6">
+                <button onclick="switchTab('library'); openStartModal();" class="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-xl shadow-indigo-500/40 border-4 border-slate-900">
+                    <i class="fas fa-play text-lg ml-1"></i>
+                </button>
+            </div>
+            <button onclick="switchTab('settings')" id="mob-nav-settings" class="mobile-nav-link flex flex-col items-center gap-1 p-2 text-slate-500 transition-all">
+                <i class="fas fa-sliders text-xl mb-0.5"></i> <span class="text-[10px] font-bold">Stream</span>
+            </button>
+            <button onclick="switchTab('profile')" id="mob-nav-profile" class="mobile-nav-link flex flex-col items-center gap-1 p-2 text-slate-500 transition-all">
+                <i class="fas fa-user-circle text-xl mb-0.5"></i> <span class="text-[10px] font-bold">Akun</span>
+            </button>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 p-4 md:p-10 max-w-6xl mx-auto w-full mb-4 md:mb-0">
+            <!-- MOBILE HEADER -->
+            <header class="flex justify-between items-center mb-6 md:mb-8">
+                <div class="flex items-center gap-3 md:hidden">
+                    <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center"><i class="fas fa-music text-white text-xs"></i></div>
+                    <span class="font-bold text-lg tracking-tight">LiteStream</span>
+                </div>
+                <div class="hidden md:block">
+                    <h2 class="text-xl font-bold">Dashboard</h2>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Streaming Control Center</p>
+                </div>
+                <div class="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2 shadow-sm">
+                    <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                    <span id="status-label" class="text-[10px] font-bold text-slate-400 uppercase">Offline</span>
+                </div>
+            </header>
+
+            <!-- STATS CARD -->
+            <div class="bg-slate-800 border border-slate-700/50 rounded-3xl p-6 mb-6 shadow-xl overflow-hidden relative">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                <div class="flex flex-col md:flex-row gap-6 md:gap-8 items-start md:items-center relative z-10">
+                    <div class="min-w-[150px]">
+                        <p class="text-[10px] font-extrabold text-indigo-400 uppercase tracking-widest mb-1">Paket Aktif</p>
+                        <h3 id="plan-name-display" class="text-xl font-bold text-white truncate">Loading...</h3>
+                    </div>
+                    <div class="w-full h-px bg-slate-700 md:w-px md:h-12"></div>
+                    <div class="flex-1 w-full grid grid-cols-2 gap-4">
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                <span>Storage</span><span id="storage-text">0 / 0 MB</span>
+                            </div>
+                            <div class="h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-700/30">
+                                <div id="storage-bar" class="h-full bg-indigo-500 transition-all duration-700" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                <span>Quota</span><span id="usage-text">0 / 0 H</span>
+                            </div>
+                            <div class="h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-700/30">
+                                <div id="usage-bar" class="h-full bg-emerald-500 transition-all duration-700" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: OVERVIEW -->
+            <div id="tab-overview" class="tab-content active space-y-6">
+                <h2 class="text-xl font-bold text-white hidden md:block">Streaming Status</h2>
+                
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                    <!-- Desktop Header (Hidden on Mobile) -->
+                    <div class="hidden md:grid grid-cols-12 gap-4 px-6 py-4 border-b border-slate-800 bg-slate-900/50">
+                        <div class="col-span-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stream Info</div>
+                        <div class="col-span-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Platform</div>
+                        <div class="col-span-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Actions</div>
+                    </div>
+
+                    <div id="overview-stream-list" class="min-h-[200px] relative">
+                        <div id="overview-empty" class="absolute inset-0 flex flex-col items-center justify-center p-8 transition-opacity duration-300">
+                            <div class="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4 border border-slate-700/50">
+                                <i class="fas fa-broadcast-tower text-2xl text-slate-600"></i>
+                            </div>
+                            <h3 class="text-sm font-bold text-slate-400">Tidak ada stream aktif</h3>
+                            <p class="text-xs text-slate-600 mt-1">Mulai broadcast dari menu Library.</p>
+                        </div>
+                        <!-- Rows injected here -->
+                    </div>
+                </div>
+
+                <!-- Logs -->
+                <div>
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 pl-1">Activity Logs</h3>
+                    <div class="bg-slate-950 rounded-2xl border border-slate-800 h-40 overflow-hidden flex flex-col relative group">
+                         <div id="logConsole" class="flex-1 p-4 font-mono text-[10px] overflow-y-auto space-y-1.5 text-slate-500"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: LIBRARY -->
+            <div id="tab-library" class="tab-content space-y-6">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <h2 class="text-xl font-bold hidden md:block">Media Library</h2>
+                    
+                    <div class="w-full md:w-auto flex gap-2">
+                        <!-- Desktop Button -->
+                        <button id="btn-start-playlist" onclick="openStartModal()" class="flex-1 md:flex-none hidden bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-emerald-900/20 transition-all">
+                            <i class="fas fa-play mr-2"></i> START (<span id="selected-count">0</span>)
+                        </button>
+                        <!-- Upload Button -->
+                        <button onclick="document.getElementById('file-up').click()" class="flex-1 md:flex-none bg-indigo-600 px-6 py-3 rounded-xl font-bold text-sm hover:bg-indigo-500 transition-all text-white shadow-lg shadow-indigo-900/20">
+                            <i class="fas fa-cloud-upload-alt mr-2"></i> Upload
+                        </button>
+                    </div>
+                    <input type="file" id="file-up" class="hidden" accept=".mp3,.jpg,.jpeg,.png" onchange="handleUpload(this)">
+                </div>
+                
+                <!-- Search & Filters -->
+                <div class="flex flex-col md:flex-row gap-3">
+                    <div class="relative flex-1">
+                        <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500"></i>
+                        <input type="text" id="media-search" oninput="renderMediaList()" placeholder="Cari file..." class="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-12 pr-5 py-3 text-sm text-white outline-none focus:border-indigo-500 transition-all">
+                    </div>
+                    <div class="flex p-1 bg-slate-900 rounded-xl border border-slate-800 w-full md:w-auto">
+                        <button onclick="switchMediaTab('audio')" id="mt-audio" class="flex-1 md:flex-none media-subtab active px-6 py-2.5 rounded-lg text-xs font-bold transition-all uppercase">MP3</button>
+                        <button onclick="switchMediaTab('image')" id="mt-image" class="flex-1 md:flex-none media-subtab px-6 py-2.5 rounded-lg text-xs font-bold transition-all uppercase">IMG</button>
+                    </div>
+                </div>
+
+                <!-- Grid List -->
+                <div id="media-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-20 md:pb-0"></div>
+            </div>
+
+            <!-- TAB: SETTINGS (MULTI-STREAM) -->
+            <div id="tab-settings" class="tab-content space-y-6">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xl font-bold">Multi-Stream</h2>
+                    <button onclick="openAddDestModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-lg flex items-center gap-2">
+                        <i class="fas fa-plus"></i> <span class="hidden md:inline">Tambah</span>
+                    </button>
+                </div>
+                <div class="bg-slate-800/50 p-4 md:p-6 rounded-3xl border border-slate-700/50">
+                    <div id="destinations-list" class="space-y-4"></div>
+                </div>
+            </div>
+
+            <!-- TAB: PROFILE -->
+            <div id="tab-profile" class="tab-content space-y-8">
+                <h2 class="text-2xl font-bold">My Profile</h2>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Edit Profile Card -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-xl">
+                        <h3 class="text-lg font-bold text-white mb-6">Edit Profile</h3>
+                        <form onsubmit="saveProfile(event)" class="space-y-5">
+                            <div>
+                                <label class="text-[10px] font-bold uppercase text-slate-500 mb-2 block tracking-wider">Username</label>
+                                <input type="text" id="profile-username" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-5 py-3.5 text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all">
+                            </div>
+                            <div class="pt-2">
+                                <label class="text-[10px] font-bold uppercase text-slate-500 mb-2 block tracking-wider">Change Password</label>
+                                <div class="space-y-3">
+                                    <input type="password" id="profile-current-pass" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-5 py-3.5 text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all" placeholder="Password Saat Ini">
+                                    <input type="password" id="profile-new-pass" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-5 py-3.5 text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all" placeholder="Password Baru (Opsional)">
+                                </div>
+                            </div>
+                            <div class="pt-4">
+                                <button type="submit" class="w-full py-3.5 bg-indigo-600 rounded-xl font-bold text-white hover:bg-indigo-500 shadow-lg shadow-indigo-900/20 transition-all text-sm uppercase tracking-wide">Update Credentials</button>
+                                <button type="button" onclick="handleLogout()" class="md:hidden mt-4 w-full py-3 bg-slate-800 text-rose-500 rounded-xl font-bold border border-slate-700">Log Out</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Subscription Details Card -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden flex flex-col justify-center">
+                        <i class="fas fa-crown absolute -right-6 -top-6 text-slate-800/50 text-[10rem] pointer-events-none rotate-12"></i>
+                        
+                        <div class="relative z-10">
+                            <h3 class="text-lg font-bold text-white mb-6">Subscription Details</h3>
+                            
+                            <div class="bg-slate-950/50 border border-slate-800 rounded-2xl p-6 mb-6 backdrop-blur-sm">
+                                <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-2">Current Plan</div>
+                                <h2 id="sub-plan-name" class="text-2xl md:text-3xl font-bold text-white">Loading...</h2>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-slate-950/50 border border-slate-800 rounded-2xl p-5 backdrop-blur-sm">
+                                    <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-2">Status</div>
+                                    <div id="sub-status" class="inline-block px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs font-bold border border-emerald-500/20">ACTIVE</div>
+                                </div>
+                                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden">
+                                     <div class="text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-2">Expires On</div>
+                                     <div id="sub-expires-date" class="font-bold text-white text-sm">Loading...</div>
+                                     <div id="sub-expires-days" class="text-[10px] text-emerald-400 mt-1">Calculating...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment History -->
+                <div>
+                    <h3 class="text-lg font-bold text-white mb-4">Payment History</h3>
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left min-w-[600px]">
+                                <thead class="bg-slate-950 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                                    <tr>
+                                        <th class="p-6">Date</th>
+                                        <th class="p-6">Invoice</th>
+                                        <th class="p-6">Plan</th>
+                                        <th class="p-6">Amount</th>
+                                        <th class="p-6">Status</th>
+                                        <th class="p-6 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm divide-y divide-slate-800">
+                                    <tr>
+                                        <td colspan="6" class="p-12 text-center text-slate-500 italic">No payment history found.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: ADMIN (USERS) -->
+            <div id="tab-users" class="tab-content space-y-6">
+                <h2 class="text-xl font-bold">Admin Panel</h2>
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden overflow-x-auto">
+                    <table class="w-full text-left min-w-[600px]">
+                        <thead class="bg-slate-800 text-[10px] uppercase font-bold text-slate-500">
+                            <tr><th class="p-5">User</th><th class="p-5">Usage</th><th class="p-5 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody id="user-table-body" class="text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // CORE VARIABLES
+        let destinations = [];
+        let socket = null;
+        let currentUser = null;
+        let selectedMedia = new Set();
+        let allMedia = [];
+        let confirmCallback = null;
+        const PLATFORMS = { 
+            youtube: 'rtmp://a.rtmp.youtube.com/live2/', 
+            facebook: 'rtmps://live-api-s.facebook.com:443/rtmp/', 
+            twitch: 'rtmp://live.twitch.tv/app/' 
+        };
+        window.currentMediaTab = 'audio';
+
+        // --- AUTH & COMMON UTILS ---
+        function showToast(msg, type='success') {
+            const c = document.getElementById('toast-container');
+            const e = document.createElement('div');
+            e.className = `toast-enter ${type==='success'?'bg-emerald-600':'bg-rose-600'} text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs font-bold backdrop-blur-md`;
+            e.innerHTML = `<i class="fas ${type==='success'?'fa-check-circle':'fa-exclamation-circle'} text-lg"></i><span>${msg}</span>`;
+            c.appendChild(e);
+            requestAnimationFrame(() => { e.classList.add('toast-enter-active'); e.classList.remove('toast-enter'); });
+            setTimeout(() => { e.classList.add('toast-exit-active'); e.remove(); }, 3000);
+        }
+
+        // --- STREAM & DESTINATION LOGIC ---
+        async function fetchDestinations() {
+            try {
+                const res = await fetch('/api/destinations');
+                destinations = await res.json();
+                renderDestinations();
+            } catch(e) {}
+        }
+
+        function renderDestinations() {
+            const list = document.getElementById('destinations-list');
+            if(!destinations.length) { list.innerHTML = '<div class="text-center py-10 text-slate-500 text-sm border-2 border-dashed border-slate-800 rounded-2xl">Belum ada tujuan stream.<br>Tap "Tambah" di atas.</div>'; return; }
+            list.innerHTML = destinations.map(d => `
+                <div class="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow-lg ${d.platform==='youtube'?'bg-red-500/10 text-red-500':d.platform==='facebook'?'bg-blue-600/10 text-blue-500':'bg-slate-800 text-slate-400'}">
+                            <i class="fab fa-${d.platform==='custom'?'server':d.platform}"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="font-bold text-sm text-white truncate">${d.name}</div>
+                            <div class="text-[10px] text-slate-500 font-mono flex gap-2">
+                                <span>${d.platform}</span>
+                                <span>•</span>
+                                <span>...${d.stream_key.slice(-4)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between w-full sm:w-auto gap-4 pl-14 sm:pl-0 border-t sm:border-0 border-slate-800 pt-3 sm:pt-0">
+                         <div class="flex items-center gap-2">
+                             <span class="text-[10px] font-bold text-slate-500 uppercase">${d.is_active ? 'ON' : 'OFF'}</span>
+                             <div class="relative inline-block w-10 align-middle select-none">
+                                <input type="checkbox" id="toggle-${d.id}" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-700 transition-all duration-300 ${d.is_active ? 'right-0 border-emerald-400' : 'left-0'}" ${d.is_active ? 'checked' : ''} onclick="toggleDestination(${d.id})"/>
+                                <label for="toggle-${d.id}" class="toggle-label block overflow-hidden h-5 rounded-full bg-slate-700 cursor-pointer ${d.is_active ? 'bg-emerald-500' : ''}"></label>
+                            </div>
+                        </div>
+                        <button onclick="deleteDestination(${d.id})" class="w-8 h-8 rounded-lg bg-slate-800 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors flex items-center justify-center"><i class="fas fa-trash text-xs"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // --- NEW START STREAM MODAL ---
+        function openStartModal() {
+            const list = document.getElementById('start-dest-list');
+            list.innerHTML = destinations.filter(d => d.is_active).map(d => `
+                <label class="flex items-center gap-3 p-4 rounded-xl bg-slate-800 border border-slate-700 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                    <input type="checkbox" name="start_dest" value="${d.id}" class="w-5 h-5 accent-emerald-500 rounded">
+                    <div>
+                        <div class="font-bold text-xs text-white">${d.name}</div>
+                        <div class="text-[10px] text-slate-500 uppercase">${d.platform}</div>
+                    </div>
+                </label>
+            `).join('');
+            
+            if(list.innerHTML === '') list.innerHTML = '<div class="text-slate-500 text-xs text-center py-4 bg-slate-800/50 rounded-xl">Tidak ada tujuan aktif.<br>Aktifkan di tab Multi-Stream dulu.</div>';
+            
+            document.getElementById('start-stream-modal').classList.remove('hidden');
+        }
+
+        function closeStartModal() { document.getElementById('start-stream-modal').classList.add('hidden'); }
+
+        async function confirmStartStream() {
+            const checkboxes = document.querySelectorAll('input[name="start_dest"]:checked');
+            const selectedDestIds = Array.from(checkboxes).map(c => c.value);
+
+            if(selectedDestIds.length === 0) { showToast('Pilih minimal satu channel', 'error'); return; }
+
+            const btn = document.querySelector('#start-stream-modal button:last-child');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/playlist/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        ids: Array.from(selectedMedia), 
+                        destinationIds: selectedDestIds, // Send specific IDs
+                        loop: true 
+                    })
+                });
+                const d = await res.json();
+                
+                if(d.success) {
+                    showToast(d.message);
+                    closeStartModal();
+                    selectedMedia.clear(); 
+                    renderMediaList();
+                    toggleSelect(-1); // Update counter
+                    switchTab('overview');
+                    setTimeout(showDashboard, 1000); // Refresh list
+                } else {
+                    showToast(d.error, 'error');
+                }
+            } catch(e) { showToast('Connection Error', 'error'); }
+            
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+
+        async function stopStream(streamId) {
+            await fetch('/api/stream/stop', {
+                method:'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ streamId }) // Optional streamId
+            });
+            setTimeout(showDashboard, 500);
+        }
+
+        // --- OVERVIEW UI (RESPONSIVE CARD LAYOUT) ---
+        function updateStreamUI(isActive, activeStreams = []) {
+            const empty = document.getElementById('overview-empty');
+            const list = document.getElementById('overview-stream-list');
+            
+            // Clear rows
+            Array.from(list.children).forEach(c => { if(c.id !== 'overview-empty') c.remove(); });
+
+            if(isActive && activeStreams.length > 0) {
+                empty.classList.add('hidden');
+                activeStreams.forEach(stream => {
+                    const destNames = stream.destinations.map(d => `<span class="bg-slate-800 px-2 py-0.5 rounded text-[10px] border border-slate-700 whitespace-nowrap">${d.name}</span>`).join(' ');
+                    const platformIcon = stream.destinations[0].platform === 'youtube' ? 'fa-youtube text-red-500' : 'fa-broadcast-tower text-indigo-400';
+
+                    const row = document.createElement('div');
+                    // Mobile: Flex Column / Card style. Desktop: Grid Row.
+                    row.className = 'flex flex-col md:grid md:grid-cols-12 gap-3 md:gap-4 px-4 md:px-6 py-4 border-b border-slate-800 hover:bg-slate-800/20 transition-colors bg-slate-900/30';
+                    row.innerHTML = `
+                        <!-- Left: Icon + Title + Status -->
+                        <div class="md:col-span-6 flex items-start md:items-center gap-3 md:gap-4">
+                            <div class="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/10 shrink-0">
+                                 <i class="fab ${platformIcon} text-lg"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="font-bold text-sm text-white flex flex-wrap gap-1 mb-1 md:mb-0">${destNames}</div>
+                                <div class="text-[10px] font-mono text-slate-500 flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    <span id="bitrate-${stream.id}" class="text-indigo-300">Connecting...</span>
+                                    <span class="text-slate-600">|</span>
+                                    <span id="duration-${stream.id}">00:00:00</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Middle: Platform Tags (Desktop) / Hidden Mobile -->
+                        <div class="md:col-span-3 hidden md:block">
+                             <span class="text-[10px] font-bold text-slate-400 uppercase">${stream.destinations.map(d=>d.platform).join(', ')}</span>
+                        </div>
+
+                        <!-- Bottom/Right: Action Button -->
+                        <div class="md:col-span-3 flex md:justify-end items-center justify-between mt-2 md:mt-0 pt-2 md:pt-0 border-t md:border-0 border-slate-800/50">
+                            <span class="text-[10px] text-slate-500 uppercase font-bold md:hidden">Live Action</span>
+                            <button onclick="stopStream('${stream.id}')" class="group bg-slate-800 hover:bg-rose-500/10 border border-slate-700 hover:border-rose-500/30 px-3 py-1.5 md:p-2 rounded-lg transition-all flex items-center gap-2" title="Stop This Stream">
+                                <i class="fas fa-stop text-slate-400 group-hover:text-rose-500 text-xs"></i>
+                                <span class="text-xs text-slate-400 group-hover:text-rose-500 md:hidden font-bold">STOP STREAM</span>
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(row);
+                });
+                
+                document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]';
+                document.getElementById('status-label').textContent = 'Live (' + activeStreams.length + ')';
+                document.getElementById('status-label').classList.add('text-emerald-400');
+            } else {
+                empty.classList.remove('hidden');
+                document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-slate-500';
+                document.getElementById('status-label').textContent = 'Offline';
+                document.getElementById('status-label').classList.remove('text-emerald-400');
+            }
+        }
+
+        // --- STANDARD UTILS (Auth, Media, Profile) ---
+        function switchTab(t) { 
+            document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active', c.id==='tab-'+t)); 
+            
+            // Desktop Sidebar
+            document.querySelectorAll('.nav-link').forEach(l=>l.classList.toggle('active', l.id==='nav-'+t)); 
+            
+            // Mobile Bottom Nav
+            document.querySelectorAll('.mobile-nav-link').forEach(l=>l.classList.remove('active', 'text-indigo-400'));
+            const mobNav = document.getElementById('mob-nav-'+t);
+            if(mobNav) {
+                mobNav.classList.add('active', 'text-indigo-400');
+                mobNav.classList.remove('text-slate-500');
+            }
+
+            if(t==='users')fetchUsers(); 
+        }
+
+        function showAuth(m) { document.getElementById('login-view').classList.remove('hidden'); isLoginMode=m!=='register'; updateAuthUI(); }
+        function hideAuth() { document.getElementById('login-view').classList.add('hidden'); }
+        function toggleAuthMode() { isLoginMode=!isLoginMode; updateAuthUI(); }
+        function updateAuthUI() { document.getElementById('auth-btn').innerText=isLoginMode?'MASUK DASHBOARD':'DAFTAR SEKARANG'; document.getElementById('auth-title').innerText=isLoginMode?'LiteStream':'Daftar Baru'; document.getElementById('toggle-text').innerText=isLoginMode?'Belum punya akun?':'Sudah punya akun?'; document.getElementById('toggle-btn').innerText=isLoginMode?'Daftar Sekarang':'Login Disini'; }
+        
+        async function handleAuth(e) {
+             e.preventDefault(); const u=document.getElementById('login-user').value, p=document.getElementById('login-pass').value;
+             const ep = isLoginMode?'/api/login':'/api/register';
+             try { const r=await fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})}); const d=await r.json();
+             if(d.success){ if(isLoginMode){location.reload();}else{showToast('Register Sukses'); toggleAuthMode();} }else showToast(d.error,'error'); }catch(e){}
+        }
+        async function handleLogout() { await fetch('/api/logout',{method:'POST'}); location.reload(); }
+        
+        async function checkAuth() { 
+            try { const r=await fetch('/api/check-auth'); const d=await r.json(); 
+            if(d.authenticated){ currentUser=d.user; showDashboard(); }else{ setView('landing-view'); fetchPublicPlans(); } }catch(e){setView('landing-view');} 
+        }
+        function setView(id){ document.querySelectorAll('.view-section').forEach(v=>v.classList.toggle('active-view', v.id===id)); }
+        
+        async function showDashboard() {
+            setView('main-app'); hideAuth(); updateUIInfo();
+            if(currentUser.role==='admin') document.getElementById('nav-users').classList.remove('hidden');
+            fetchMedia(); fetchDestinations();
+            const r = await fetch('/api/stream/status'); const s = await r.json();
+            updateStreamUI(s.total_active > 0, s.active_streams);
+        }
+        
+        function updateUIInfo() { 
+            if(!currentUser) return; 
+            
+            // PROFILE & PLAN LOGIC
+            // 1. Sidebar/Header stats
+            const planNameEl = document.getElementById('plan-name-display');
+            if(planNameEl) {
+                planNameEl.textContent = currentUser.plan_name;
+                if (currentUser.plan_name === 'Administrator' || currentUser.role === 'admin') {
+                    planNameEl.classList.add('text-amber-400');
+                    planNameEl.classList.remove('text-white');
+                } else {
+                    planNameEl.classList.add('text-white');
+                    planNameEl.classList.remove('text-amber-400');
+                }
+            }
+            
+            // 2. Profile Tab Inputs
+            const profileUserEl = document.getElementById('profile-username');
+            if(profileUserEl) profileUserEl.value = currentUser.username;
+
+            // 3. Subscription Card Details
+            const subPlanName = document.getElementById('sub-plan-name');
+            const subExpiresDate = document.getElementById('sub-expires-date');
+            const subExpiresDays = document.getElementById('sub-expires-days');
+            
+            if(subPlanName) {
+                subPlanName.textContent = currentUser.plan_name;
+                
+                // MOCK LOGIC FOR EXPIRY (Since DB doesn't track specific expiry yet)
+                if(currentUser.role === 'admin') {
+                    subExpiresDate.textContent = 'NEVER';
+                    subExpiresDays.textContent = 'Lifetime Access';
+                    subPlanName.className = "text-2xl md:text-3xl font-bold text-amber-400";
+                } else {
+                    // Just a visual placeholder for now, 30 days from now
+                    const date = new Date();
+                    date.setDate(date.getDate() + 30);
+                    subExpiresDate.textContent = date.toISOString().split('T')[0];
+                    subExpiresDays.textContent = '30 days remaining';
+                    subPlanName.className = "text-2xl md:text-3xl font-bold text-white";
+                }
+            }
+
+            // 4. STORAGE & USAGE BARS
+            const u = (currentUser.storage_used/1048576).toFixed(1); 
+            const maxMB = currentUser.max_storage_mb;
+            if (maxMB > 500000) { 
+                document.getElementById('storage-text').textContent = "UNLIMITED";
+                document.getElementById('storage-bar').style.width = '100%';
+                document.getElementById('storage-bar').className = 'h-full bg-amber-500 transition-all duration-700';
+            } else {
+                document.getElementById('storage-text').textContent = `${u} / ${maxMB} MB`; 
+                document.getElementById('storage-bar').style.width = Math.min((u/maxMB*100),100)+'%';
+                document.getElementById('storage-bar').className = 'h-full bg-indigo-500 transition-all duration-700';
+            }
+
+            const h = ((currentUser.usage_seconds||0)/3600).toFixed(1); 
+            const limitH = currentUser.daily_limit_hours||24;
+            if (limitH >= 24) {
+                 document.getElementById('usage-text').textContent = "UNLIMITED";
+                 document.getElementById('usage-bar').style.width = '100%';
+                 document.getElementById('usage-bar').className = 'h-full bg-amber-500 transition-all duration-700';
+            } else {
+                 document.getElementById('usage-text').textContent = `${h} / ${limitH} H`; 
+                 document.getElementById('usage-bar').style.width = Math.min((h/limitH*100),100)+'%';
+                 document.getElementById('usage-bar').className = 'h-full bg-emerald-500 transition-all duration-700';
+            }
+        }
+
+        async function fetchPublicPlans() {
+            const r=await fetch('/api/plans-public'); const p=await r.json();
+            document.getElementById('pricing-grid').innerHTML=p.map(x=>`<div class="glass p-6 md:p-8 rounded-[2rem] border border-slate-800 flex flex-col relative"><h4 class="text-lg font-bold">${x.name}</h4><div class="text-2xl font-black text-indigo-400 my-4">${x.price_text}</div><ul class="text-xs text-slate-400 space-y-2 flex-1 mb-6"><li>${x.daily_limit_hours} Jam/hari</li><li>${x.max_storage_mb}MB Storage</li></ul><button onclick="showAuth('register')" class="w-full py-3 bg-indigo-600 rounded-xl font-bold hover:bg-indigo-500">Pilih Paket</button></div>`).join('');
+        }
+
+        async function fetchMedia() { const r=await fetch('/api/videos'); allMedia=await r.json(); renderMediaList(); }
+        function renderMediaList() {
+            const q = document.getElementById('media-search').value.toLowerCase();
+            const f = allMedia.filter(m=>m.type===window.currentMediaTab && m.filename.toLowerCase().includes(q));
+            document.getElementById('media-list').innerHTML=f.map(v=>`<div class="bg-slate-800/40 p-3 rounded-2xl border border-slate-700/50 flex items-center gap-3 group active:scale-[0.98] transition-transform"><input type="checkbox" onchange="toggleSelect(${v.id})" ${selectedMedia.has(v.id)?'checked':''} class="w-5 h-5 accent-indigo-500 rounded"><div onclick="openMediaDetails(${v.id})" class="flex-1 min-w-0 cursor-pointer hover:text-indigo-400 transition-colors"><div class="truncate text-xs font-bold text-slate-300">${v.filename}</div><div class="text-[10px] text-slate-500">${(v.size/1024/1024).toFixed(1)} MB</div></div><button onclick="deleteMedia(${v.id})" class="text-slate-600 active:text-rose-500 md:text-rose-500 md:opacity-0 md:group-hover:opacity-100 p-2"><i class="fas fa-trash"></i></button></div>`).join('');
+        }
+        function switchMediaTab(t){window.currentMediaTab=t; document.querySelectorAll('.media-subtab').forEach(x=>x.classList.toggle('active',x.id==='mt-'+t)); renderMediaList();}
+        function toggleSelect(id) { 
+            if(id!==-1){ if(selectedMedia.has(id))selectedMedia.delete(id); else selectedMedia.add(id); } 
+            document.getElementById('selected-count').textContent=selectedMedia.size; 
+            
+            // Show/Hide Start Button Logic
+            const btn = document.getElementById('btn-start-playlist');
+            if(selectedMedia.size > 0) {
+                btn.classList.remove('hidden');
+                btn.classList.add('flex'); // Ensure flex display for mobile button logic
+            } else {
+                btn.classList.add('hidden');
+                btn.classList.remove('flex');
+            }
+        }
+        
+        // --- MEDIA DETAILS MODAL LOGIC ---
+        function openMediaDetails(mediaId) {
+            const media = allMedia.find(m => m.id === mediaId);
+            if (!media) return;
+
+            document.getElementById('detail-filename').innerText = media.filename;
+            document.getElementById('detail-type').innerText = media.type.toUpperCase();
+            document.getElementById('detail-size').innerText = (media.size / 1024 / 1024).toFixed(2) + ' MB';
+            document.getElementById('detail-date').innerText = new Date(media.created_at || Date.now()).toLocaleString();
+            document.getElementById('detail-id').innerText = '#' + media.id;
+
+            const iconContainer = document.getElementById('detail-icon-container');
+            const icon = document.getElementById('detail-icon');
+            
+            if (media.type === 'audio') {
+                icon.className = 'fas fa-music text-3xl text-indigo-500';
+            } else {
+                icon.className = 'fas fa-image text-3xl text-emerald-500';
+            }
+
+            document.getElementById('media-details-modal').classList.remove('hidden');
+        }
+
+        function closeMediaDetails() {
+            document.getElementById('media-details-modal').classList.add('hidden');
+        }
+
+        async function handleUpload(i) {
+            const f=i.files[0]; if(!f)return; if(!f.name.match(/\.(mp3|jpg|jpeg|png)$/i)){showToast('Format salah','error'); return;}
+            const fd=new FormData(); fd.append('video',f); showToast('Uploading...', 'info');
+            const r=await fetch('/api/videos/upload',{method:'POST',body:fd}); const d=await r.json();
+            if(d.success){showToast('Sukses'); fetchMedia(); updateUIInfo();}else showToast(d.error,'error'); i.value='';
+        }
+        function deleteMedia(id){ openConfirmModal('Hapus?', async()=>{ await fetch('/api/videos/'+id,{method:'DELETE'}); fetchMedia(); updateUIInfo(); }); }
+        
+        function openConfirmModal(msg, cb) { document.getElementById('confirm-message').textContent=msg; document.getElementById('custom-confirm-modal').classList.remove('hidden'); confirmCallback=cb; }
+        function closeConfirmModal() { document.getElementById('custom-confirm-modal').classList.add('hidden'); }
+        document.getElementById('btn-confirm-action').onclick = ()=>{ confirmCallback?.(); closeConfirmModal(); };
+        
+        // Settings / Destinations
+        function openAddDestModal(){ document.getElementById('new-dest-platform').value='youtube'; handleNewDestPlatformChange(); document.getElementById('add-dest-modal').classList.remove('hidden'); }
+        function handleNewDestPlatformChange(){ const p=document.getElementById('new-dest-platform').value; document.getElementById('new-dest-url-container').classList.toggle('hidden', p!=='custom'); }
+        async function handleAddDestination(e){ 
+            e.preventDefault(); const p=document.getElementById('new-dest-platform').value; 
+            const u = p==='custom' ? document.getElementById('new-dest-url').value : PLATFORMS[p];
+            const load={ name:document.getElementById('new-dest-name').value||p, platform:p, rtmp_url:u, stream_key:document.getElementById('new-dest-key').value };
+            const r=await fetch('/api/destinations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(load)});
+            if(r.ok){ showToast('Disimpan'); document.getElementById('add-dest-modal').classList.add('hidden'); fetchDestinations(); }
+        }
+        async function deleteDestination(id){ openConfirmModal('Hapus tujuan?', async()=>{await fetch('/api/destinations/'+id,{method:'DELETE'}); fetchDestinations();}); }
+        async function toggleDestination(id){ await fetch(`/api/destinations/${id}/toggle`,{method:'PUT'}); fetchDestinations(); }
+
+        async function fetchUsers(){ const r=await fetch('/api/users'); const u=await r.json(); document.getElementById('user-table-body').innerHTML=u.map(x=>`<tr class="border-b border-slate-800"><td class="p-5 font-bold">${x.username}</td><td class="p-5 text-xs">${(x.usage_seconds/3600).toFixed(1)}H</td><td class="p-5 text-right"><button class="bg-indigo-600 px-3 py-1 rounded text-[10px] font-bold">Manage</button></td></tr>`).join(''); }
+        async function saveProfile(e){ e.preventDefault(); const u=document.getElementById('profile-username').value, c=document.getElementById('profile-current-pass').value, n=document.getElementById('profile-new-pass').value; const r=await fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,currentPassword:c,newPassword:n})}); const d=await r.json(); showToast(d.success?'Updated':d.error, d.success?'success':'error'); }
+
+        // --- INIT ---
+        window.onload = function() {
+            if (typeof io !== 'undefined') {
+                socket = io();
+                socket.on('stats', (data) => {
+                    const durEl = document.getElementById(`duration-${data.streamId}`);
+                    const bitEl = document.getElementById(`bitrate-${data.streamId}`);
+                    if(durEl) durEl.textContent = data.duration.split('.')[0];
+                    if(bitEl) bitEl.textContent = data.bitrate;
+
+                    if (data.usage_remaining !== undefined && currentUser) {
+                        const limitHrs = currentUser.daily_limit_hours || 24;
+                        const usedSecs = (limitHrs * 3600) - data.usage_remaining;
+                        currentUser.usage_seconds = usedSecs; 
+                        
+                        // UI Update for usage handled in updateUIInfo usually, but simple refresh here:
+                        const h = ((usedSecs)/3600).toFixed(1); 
+                        const limitH = currentUser.daily_limit_hours||24;
+                        if(limitH < 24) {
+                            document.getElementById('usage-text').textContent = `${h} / ${limitH} H`; 
+                            document.getElementById('usage-bar').style.width = Math.min((h/limitH*100),100)+'%';
+                        }
+                    }
+                });
+                socket.on('log', (data) => {
+                    const p = document.createElement('p');
+                    p.className = data.type === 'error' ? 'text-rose-400' : 'text-slate-400';
+                    p.textContent = `> ${data.message}`;
+                    const consoleEl = document.getElementById('logConsole');
+                    if (consoleEl) { consoleEl.appendChild(p); consoleEl.scrollTop = consoleEl.scrollHeight; }
+                    
+                    if (data.type === 'start' || data.type === 'end') {
+                        setTimeout(() => showDashboard(), 500);
+                    }
+                });
+            }
+            checkAuth();
+        };
+    </script>
+</body>
+</html>
